@@ -96,7 +96,8 @@ BusActivation*    bus_context_get_activation                     (BusContext    
 BusMatchmaker*    bus_context_get_matchmaker                     (BusContext       *context);
 DBusLoop*         bus_context_get_loop                           (BusContext       *context);
 dbus_bool_t       bus_context_allow_unix_user                    (BusContext       *context,
-                                                                  unsigned long     uid);
+                                                                  unsigned long     uid,
+                                                                  unsigned long     pid);
 dbus_bool_t       bus_context_allow_windows_user                 (BusContext       *context,
                                                                   const char       *windows_sid);
 BusPolicy*        bus_context_get_policy                         (BusContext       *context);

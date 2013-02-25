@@ -47,7 +47,8 @@
  */
 dbus_bool_t
 _dbus_is_console_user (dbus_uid_t uid,
-		       DBusError *error)
+                       dbus_pid_t pid,
+                       DBusError *error)
 {
 
   DBusUserDatabase *db;
@@ -115,7 +116,7 @@ _dbus_is_console_user (dbus_uid_t uid,
 
   /* TPTD: this should be cache-safe, we've locked the DB and
     _dbus_user_at_console doesn't pass it on. */
-  info = _dbus_user_database_lookup (db, uid, NULL, error);
+  info = _dbus_user_database_lookup (db, uid, pid, NULL, error);
 
   if (info == NULL)
     {
@@ -203,7 +204,7 @@ _dbus_get_user_id_and_primary_group (const DBusString  *username,
       return FALSE;
     }
 
-  if (!_dbus_user_database_get_username (db, username,
+  if (!_dbus_user_database_get_username (db, username, DBUS_PID_UNSET,
                                          &info, NULL))
     {
       _dbus_user_database_unlock_system ();
@@ -379,6 +380,7 @@ _dbus_user_database_get_gid (DBusUserDatabase     *db,
  */
 dbus_bool_t
 _dbus_groups_from_uid (dbus_uid_t         uid,
+                       dbus_pid_t         pid,
                        dbus_gid_t       **group_ids,
                        int               *n_group_ids)
 {
@@ -396,7 +398,7 @@ _dbus_groups_from_uid (dbus_uid_t         uid,
       return FALSE;
     }
 
-  if (!_dbus_user_database_get_uid (db, uid,
+  if (!_dbus_user_database_get_uid (db, uid, pid,
                                     &info, NULL))
     {
       _dbus_user_database_unlock_system ();
@@ -451,7 +453,7 @@ _dbus_userdb_test (const char *test_data_dir)
   if (!_dbus_get_user_id (username, &uid))
     _dbus_assert_not_reached ("didn't get uid");
 
-  if (!_dbus_groups_from_uid (uid, &group_ids, &n_group_ids))
+  if (!_dbus_groups_from_uid (uid, _dbus_getpid (), &group_ids, &n_group_ids))
     _dbus_assert_not_reached ("didn't get groups");
 
   printf ("    Current user: %s homedir: %s gids:",

@@ -548,7 +548,7 @@ sha1_handle_first_client_response (DBusAuth         *auth,
         }
     }
       
-  if (!_dbus_credentials_add_from_user (auth->desired_identity, data))
+  if (!_dbus_credentials_add_from_user (auth->desired_identity, data, _dbus_credentials_get_unix_pid (auth->credentials)))
     {
       _dbus_verbose ("%s: Did not get a valid username from client\n",
                      DBUS_AUTH_NAME (auth));
@@ -1078,7 +1078,8 @@ handle_server_data_external_mech (DBusAuth         *auth,
   else
     {
       if (!_dbus_credentials_add_from_user (auth->desired_identity,
-                                            &auth->identity))
+                                            &auth->identity,
+                                            _dbus_credentials_get_unix_pid (auth->credentials)))
         {
           _dbus_verbose ("%s: could not get credentials from uid string\n",
                          DBUS_AUTH_NAME (auth));

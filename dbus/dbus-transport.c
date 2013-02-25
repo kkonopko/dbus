@@ -536,6 +536,7 @@ auth_via_unix_user_function (DBusTransport *transport)
   DBusAllowUnixUserFunction unix_user_function;
   void *unix_user_data;
   dbus_uid_t uid;
+  dbus_pid_t pid;
 
   /* Dropping the lock here probably isn't that safe. */
   
@@ -546,12 +547,14 @@ auth_via_unix_user_function (DBusTransport *transport)
   unix_user_function = transport->unix_user_function;
   unix_user_data = transport->unix_user_data;
   uid = _dbus_credentials_get_unix_uid (auth_identity);
+  pid = _dbus_credentials_get_unix_pid (auth_identity);
               
   _dbus_verbose ("unlock\n");
   _dbus_connection_unlock (connection);
 
   allow = (* unix_user_function) (connection,
                                   uid,
+                                  pid,
                                   unix_user_data);
               
   _dbus_verbose ("lock post unix user function\n");

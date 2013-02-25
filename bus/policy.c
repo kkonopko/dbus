@@ -274,6 +274,7 @@ bus_policy_create_client_policy (BusPolicy      *policy,
 {
   BusClientPolicy *client;
   dbus_uid_t uid;
+  dbus_pid_t pid;
   dbus_bool_t at_console;
 
   _dbus_assert (dbus_connection_get_is_authenticated (connection));
@@ -338,8 +339,13 @@ bus_policy_create_client_policy (BusPolicy      *policy,
             }
         }
 
+      if (!dbus_connection_get_unix_process_id (connection, &pid))
+        {
+          pid = DBUS_PID_UNSET;
+        }
+
       /* Add console rules */
-      at_console = _dbus_unix_user_is_at_console (uid, error);
+      at_console = _dbus_unix_user_is_at_console (uid, pid, error);
       
       if (at_console)
         {
@@ -435,14 +441,15 @@ list_allows_user (dbus_bool_t           def,
 
 dbus_bool_t
 bus_policy_allow_unix_user (BusPolicy        *policy,
-                            unsigned long     uid)
+                            unsigned long     uid,
+                            unsigned long     pid)
 {
   dbus_bool_t allowed;
   unsigned long *group_ids;
   int n_group_ids;
 
   /* On OOM or error we always reject the user */
-  if (!_dbus_unix_groups_from_uid (uid, &group_ids, &n_group_ids))
+  if (!_dbus_unix_groups_from_uid (uid, pid, &group_ids, &n_group_ids))
     {
       _dbus_verbose ("Did not get any groups for UID %lu\n",
                      uid);

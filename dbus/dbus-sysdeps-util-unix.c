@@ -770,12 +770,70 @@ fill_user_info_from_group (struct group  *g,
 }
 
 static dbus_bool_t
+fill_group_info_yv (DBusGroupInfo *info, // the caller initializes info
+                    dbus_gid_t     gid,
+                    const char    *groupname,
+                    DBusError     *error)
+{
+    struct group g_str;
+
+    size_t buflen = 0;
+    struct group *g = NULL;
+    int result = -1;
+    char *buf = NULL;
+    FILE *f = NULL;
+    dbus_bool_t ret = FALSE;
+
+    const char* groups = MACRO__prefix "/etc/group";
+    if (!_dbus_file_exists (groups))
+      return ret;
+
+    buflen = sysconf (_SC_GETGR_R_SIZE_MAX);
+    if ((long) buflen <= 0)
+      {
+        // no, no, no... I won't support such naughty system
+        dbus_set_error (error, DBUS_ERROR_NOT_SUPPORTED, "sysconf (_SC_GETGR_R_SIZE_MAX) <= 0\n");
+        return ret;
+      }
+
+    buf = dbus_malloc (buflen);
+    if (buf == NULL)
+      {
+        dbus_set_error (error, DBUS_ERROR_NO_MEMORY, NULL);
+        return ret;
+      }
+
+    f = fopen (groups, "r");
+    if (f == NULL)
+      {
+        dbus_set_error (error, DBUS_ERROR_FILE_NOT_FOUND, "Cannot open %s for reading\n", groups);
+        goto out;
+      }
+
+    while (0 == fgetgrent_r (f, &g_str, buf, buflen, &g))
+      {
+        if ((gid != DBUS_GID_UNSET && g_str.gr_gid == gid) || (groupname != NULL && 0 == strcmp (g_str.gr_name, groupname)))
+          {
+            ret = fill_user_info_from_group (g, info, error);
+            break;
+          }
+      }
+
+    fclose (f);
+
+out:
+  dbus_free (buf);
+  return ret;
+}
+
+static dbus_bool_t
 fill_group_info (DBusGroupInfo    *info,
                  dbus_gid_t        gid,
                  const DBusString *groupname,
                  DBusError        *error)
 {
   const char *group_c_str;
+  dbus_bool_t lookup_yv_found = FALSE;
 
   _dbus_assert (groupname != NULL || gid != DBUS_GID_UNSET);
   _dbus_assert (groupname == NULL || gid == DBUS_GID_UNSET);
@@ -790,6 +848,11 @@ fill_group_info (DBusGroupInfo    *info,
    * to add more configure checks.
    */
   
+  lookup_yv_found = fill_group_info_yv (info, gid, group_c_str, error);
+  if (error && dbus_error_is_set (error))
+    return FALSE;
+
+  if (!lookup_yv_found)
 #if defined (HAVE_POSIX_GETPWNAM_R) || defined (HAVE_NONPOSIX_GETPWNAM_R)
   {
     struct group *g;
@@ -880,6 +943,8 @@ fill_group_info (DBusGroupInfo    *info,
       }
   }
 #endif  /* ! HAVE_GETPWNAM_R */
+
+  return TRUE;
 }
 
 /**
@@ -961,10 +1026,11 @@ _dbus_parse_unix_group_from_config (const DBusString  *groupname,
  */
 dbus_bool_t
 _dbus_unix_groups_from_uid (dbus_uid_t            uid,
+                            dbus_pid_t            pid,
                             dbus_gid_t          **group_ids,
                             int                  *n_group_ids)
 {
-  return _dbus_groups_from_uid (uid, group_ids, n_group_ids);
+  return _dbus_groups_from_uid (uid, pid, group_ids, n_group_ids);
 }
 
 /**
@@ -978,9 +1044,10 @@ _dbus_unix_groups_from_uid (dbus_uid_t            uid,
  */
 dbus_bool_t
 _dbus_unix_user_is_at_console (dbus_uid_t         uid,
+                               dbus_pid_t         pid,
                                DBusError         *error)
 {
-  return _dbus_is_console_user (uid, error);
+  return _dbus_is_console_user (uid, pid, error);
 
 }
 

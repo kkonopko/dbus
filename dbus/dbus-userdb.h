@@ -58,6 +58,7 @@ void              _dbus_user_database_flush         (DBusUserDatabase     *db);
 void              _dbus_user_database_unref         (DBusUserDatabase     *db);
 dbus_bool_t       _dbus_user_database_get_uid       (DBusUserDatabase     *db,
                                                      dbus_uid_t            uid,
+                                                     dbus_pid_t            pid,
                                                      const DBusUserInfo  **info,
                                                      DBusError            *error);
 dbus_bool_t       _dbus_user_database_get_gid       (DBusUserDatabase     *db,
@@ -66,6 +67,7 @@ dbus_bool_t       _dbus_user_database_get_gid       (DBusUserDatabase     *db,
                                                      DBusError            *error);
 dbus_bool_t       _dbus_user_database_get_username  (DBusUserDatabase     *db,
                                                      const DBusString     *username,
+                                                     dbus_pid_t            pid,
                                                      const DBusUserInfo  **info,
                                                      DBusError            *error);
 dbus_bool_t       _dbus_user_database_get_groupname (DBusUserDatabase     *db,
@@ -75,6 +77,7 @@ dbus_bool_t       _dbus_user_database_get_groupname (DBusUserDatabase     *db,
 
 DBusUserInfo*  _dbus_user_database_lookup       (DBusUserDatabase *db,
                                                  dbus_uid_t        uid,
+                                                 dbus_pid_t        pid,
                                                  const DBusString *username,
                                                  DBusError        *error);
 DBusGroupInfo* _dbus_user_database_lookup_group (DBusUserDatabase *db,
@@ -99,10 +102,12 @@ dbus_bool_t _dbus_get_user_id_and_primary_group (const DBusString  *username,
                                                  dbus_gid_t        *gid_p);
 dbus_bool_t _dbus_credentials_from_uid          (dbus_uid_t         user_id,
                                                  DBusCredentials   *credentials);
-dbus_bool_t _dbus_groups_from_uid		(dbus_uid_t            uid,
+dbus_bool_t _dbus_groups_from_uid               (dbus_uid_t            uid,
+                                                 dbus_pid_t            pid,
                                                  dbus_gid_t          **group_ids,
                                                  int                  *n_group_ids);
 dbus_bool_t _dbus_is_console_user               (dbus_uid_t         uid,
+                                                 dbus_pid_t         pid,
                                                  DBusError         *error);
 
 dbus_bool_t _dbus_is_a_number                   (const DBusString *str, 
@@ -114,6 +119,7 @@ dbus_bool_t _dbus_homedir_from_username         (const DBusString  *username,
                                                  DBusString        *homedir);
 
 dbus_bool_t _dbus_homedir_from_uid              (dbus_uid_t         uid,
+                                                 dbus_pid_t         pid,
                                                  DBusString        *homedir);
 
 DBUS_END_DECLS

@@ -1177,10 +1177,12 @@ bus_context_get_loop (BusContext *context)
 
 dbus_bool_t
 bus_context_allow_unix_user (BusContext   *context,
-                             unsigned long uid)
+                             unsigned long uid,
+                             unsigned long pid)
 {
   return bus_policy_allow_unix_user (context->policy,
-                                     uid);
+                                     uid,
+                                     pid);
 }
 
 /* For now this is never actually called because the default

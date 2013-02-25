@@ -145,6 +145,28 @@ _dbus_file_get_contents (DBusString       *str,
     }
   else
     {
+      int bytes_read;
+      char buffer[1024];
+      const size_t buffer_size = sizeof buffer;
+
+      while ((bytes_read = read (fd, buffer, buffer_size)))
+        {
+          if ((bytes_read < 0 && errno != EINTR) || (bytes_read > 0 && !_dbus_string_append_len (str, buffer, bytes_read)))
+            {
+              dbus_set_error (error, _dbus_error_from_errno (errno),
+                              "Error reading \"%s\": %s",
+                              filename_c,
+                              _dbus_strerror (errno));
+
+              _dbus_verbose ("read() failed: %s",
+                             _dbus_strerror (errno));
+
+              _dbus_close (fd, NULL);
+              _dbus_string_set_length (str, orig_len);
+              return FALSE;
+            }
+        }
+
       _dbus_close (fd, NULL);
       return TRUE;
     }

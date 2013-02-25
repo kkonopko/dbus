@@ -127,6 +127,7 @@ _dbus_is_a_number (const DBusString *str,
 DBusUserInfo*
 _dbus_user_database_lookup (DBusUserDatabase *db,
                             dbus_uid_t        uid,
+                            dbus_pid_t        pid,
                             const DBusString *username,
                             DBusError        *error)
 {
@@ -150,7 +151,7 @@ _dbus_user_database_lookup (DBusUserDatabase *db,
   else
     info = _dbus_hash_table_lookup_string (db->users_by_name, _dbus_string_get_const_data (username));
 
-  if (info)
+  if (info && (pid == DBUS_PID_UNSET || info->n_group_ids != 0))
     {
       _dbus_verbose ("Using cache for UID "DBUS_UID_FORMAT" information\n",
                      info->uid);
@@ -177,7 +178,10 @@ _dbus_user_database_lookup (DBusUserDatabase *db,
 
       if (uid != DBUS_UID_UNSET)
         {
-          if (!_dbus_user_info_fill_uid (info, uid, error))
+          const dbus_bool_t res = pid != DBUS_PID_UNSET ?
+            _dbus_user_info_fill_pid (info, uid, pid, error) :
+            _dbus_user_info_fill_uid (info, uid, error);
+          if (!res)
             {
               _DBUS_ASSERT_ERROR_IS_SET (error);
               _dbus_user_info_free_allocated (info);
@@ -250,6 +254,7 @@ init_system_db (void)
 
       if (!_dbus_user_database_get_uid (system_db,
                                         _dbus_getuid (),
+                                        _dbus_getpid (),
                                         &info,
                                         &error))
         {
@@ -419,7 +424,7 @@ _dbus_homedir_from_username (const DBusString *username,
       return FALSE;
     }
 
-  if (!_dbus_user_database_get_username (db, username,
+  if (!_dbus_user_database_get_username (db, username, DBUS_PID_UNSET,
                                          &info, NULL))
     {
       _dbus_user_database_unlock_system ();
@@ -440,11 +445,13 @@ _dbus_homedir_from_username (const DBusString *username,
  * Gets the home directory for the given user.
  *
  * @param uid the uid
+ * @param pid the pid
  * @param homedir string to append home directory to
  * @returns #TRUE if user existed and we appended their homedir
  */
 dbus_bool_t
 _dbus_homedir_from_uid (dbus_uid_t         uid,
+                        dbus_pid_t         pid,
                         DBusString        *homedir)
 {
   DBusUserDatabase *db;
@@ -458,7 +465,7 @@ _dbus_homedir_from_uid (dbus_uid_t         uid,
       return FALSE;
     }
 
-  if (!_dbus_user_database_get_uid (db, uid,
+  if (!_dbus_user_database_get_uid (db, uid, pid,
                                     &info, NULL))
     {
       _dbus_user_database_unlock_system ();
@@ -491,7 +498,8 @@ _dbus_homedir_from_uid (dbus_uid_t         uid,
  */
 dbus_bool_t
 _dbus_credentials_add_from_user (DBusCredentials  *credentials,
-                                 const DBusString *username)
+                                 const DBusString *username,
+                                 dbus_pid_t        pid)
 {
   DBusUserDatabase *db;
   const DBusUserInfo *info;
@@ -505,7 +513,7 @@ _dbus_credentials_add_from_user (DBusCredentials  *credentials,
       return FALSE;
     }
 
-  if (!_dbus_user_database_get_username (db, username,
+  if (!_dbus_user_database_get_username (db, username, pid,
                                          &info, NULL))
     {
       _dbus_user_database_unlock_system ();
@@ -637,10 +645,11 @@ _dbus_user_database_unref (DBusUserDatabase  *db)
 dbus_bool_t
 _dbus_user_database_get_uid (DBusUserDatabase    *db,
                              dbus_uid_t           uid,
+                             dbus_pid_t           pid,
                              const DBusUserInfo **info,
                              DBusError           *error)
 {
-  *info = _dbus_user_database_lookup (db, uid, NULL, error);
+  *info = _dbus_user_database_lookup (db, uid, pid, NULL, error);
   return *info != NULL;
 }
 
@@ -656,10 +665,11 @@ _dbus_user_database_get_uid (DBusUserDatabase    *db,
 dbus_bool_t
 _dbus_user_database_get_username  (DBusUserDatabase     *db,
                                    const DBusString     *username,
+                                   dbus_pid_t            pid,
                                    const DBusUserInfo  **info,
                                    DBusError            *error)
 {
-  *info = _dbus_user_database_lookup (db, DBUS_UID_UNSET, username, error);
+  *info = _dbus_user_database_lookup (db, DBUS_UID_UNSET, pid, username, error);
   return *info != NULL;
 }
 

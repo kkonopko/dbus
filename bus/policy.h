@@ -117,7 +117,8 @@ BusClientPolicy* bus_policy_create_client_policy  (BusPolicy        *policy,
                                                    DBusConnection   *connection,
                                                    DBusError        *error);
 dbus_bool_t      bus_policy_allow_unix_user       (BusPolicy        *policy,
-                                                   unsigned long     uid);
+                                                   unsigned long     uid,
+                                                   unsigned long     pid);
 dbus_bool_t      bus_policy_allow_windows_user    (BusPolicy        *policy,
                                                    const char       *windows_sid);
 dbus_bool_t      bus_policy_append_default_rule   (BusPolicy        *policy,

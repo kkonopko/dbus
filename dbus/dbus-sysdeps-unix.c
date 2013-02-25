@@ -123,6 +123,12 @@
 
 #endif /* Solaris */
 
+enum
+{
+  YV_APP_UID_MIN  = 0x4000u,
+  YV_APP_UID_MAX  = 0x7bffu
+};
+
 static dbus_bool_t
 _dbus_open_socket (int              *fd_p,
                    int               domain,
@@ -2024,12 +2030,70 @@ fill_user_info_from_passwd (struct passwd *p,
 }
 
 static dbus_bool_t
+fill_user_info_yv (DBusUserInfo *info, // the caller initializes info
+                   dbus_uid_t    uid,
+                   const char   *username,
+                   DBusError    *error)
+{
+    struct passwd p_str;
+
+    size_t buflen = 0;
+    struct passwd *p = NULL;
+    int result = -1;
+    char *buf = NULL;
+    FILE *f = NULL;
+    dbus_bool_t ret = FALSE;
+
+    const char* passwd = MACRO__prefix "/etc/passwd";
+    if (!_dbus_file_exists (passwd))
+      return ret;
+
+    buflen = sysconf (_SC_GETPW_R_SIZE_MAX);
+    if ((long) buflen <= 0)
+      {
+        // no, no, no... I won't support such naughty system
+        dbus_set_error (error, DBUS_ERROR_NOT_SUPPORTED, "sysconf (_SC_GETPW_R_SIZE_MAX) <= 0\n");
+        return ret;
+      }
+
+    buf = dbus_malloc (buflen);
+    if (buf == NULL)
+      {
+        dbus_set_error (error, DBUS_ERROR_NO_MEMORY, NULL);
+        return ret;
+      }
+
+    f = fopen (passwd, "r");
+    if (f == NULL)
+      {
+        dbus_set_error (error, DBUS_ERROR_FILE_NOT_FOUND, "Cannot open %s for reading\n", passwd);
+        goto out;
+      }
+
+    while (0 == fgetpwent_r (f, &p_str, buf, buflen, &p))
+      {
+        if ((uid != DBUS_UID_UNSET && p_str.pw_uid == uid) || (username != NULL && 0 == strcmp (p_str.pw_name, username)))
+          {
+            ret = fill_user_info_from_passwd (p, info, error);
+            break;
+          }
+      }
+
+    fclose (f);
+
+out:
+  dbus_free (buf);
+  return ret;
+}
+
+static dbus_bool_t
 fill_user_info (DBusUserInfo       *info,
                 dbus_uid_t          uid,
                 const DBusString   *username,
                 DBusError          *error)
 {
   const char *username_c;
+  dbus_bool_t lookup_yv_found = FALSE;
 
   /* exactly one of username/uid provided */
   _dbus_assert (username != NULL || uid != DBUS_UID_UNSET);
@@ -2052,6 +2116,11 @@ fill_user_info (DBusUserInfo       *info,
    * checks
    */
 
+  lookup_yv_found = fill_user_info_yv (info, uid, username_c, error);
+  if (error && dbus_error_is_set (error))
+    goto failed;
+
+  if (!lookup_yv_found)
 #if defined (HAVE_POSIX_GETPWNAM_R) || defined (HAVE_NONPOSIX_GETPWNAM_R)
   {
     struct passwd *p;
@@ -2156,6 +2225,8 @@ fill_user_info (DBusUserInfo       *info,
   /* Fill this in so we can use it to get groups */
   username_c = info->username;
 
+// disabling this feature as groups get extracted from /proc anyway
+#if 0
 #ifdef HAVE_GETGROUPLIST
   {
     gid_t *buf;
@@ -2256,6 +2327,7 @@ fill_user_info (DBusUserInfo       *info,
     (info->group_ids)[0] = info->primary_gid;
   }
 #endif /* HAVE_GETGROUPLIST */
+#endif
 
   _DBUS_ASSERT_ERROR_IS_CLEAR (error);
 
@@ -2264,6 +2336,257 @@ fill_user_info (DBusUserInfo       *info,
  failed:
   _DBUS_ASSERT_ERROR_IS_SET (error);
   return FALSE;
+}
+
+static
+dbus_bool_t
+read_proc_status_file(unsigned long  pid,
+                      DBusString    *str_return,
+                      DBusError     *error)
+{
+  DBusString path;
+  const char* path_c;
+  dbus_bool_t ret = FALSE;
+
+  if (!_dbus_string_init (&path))
+    return ret;
+
+  if (!_dbus_string_append_printf (&path, "/proc/%lu/status", pid))
+    goto out;
+
+  path_c = _dbus_string_get_const_data (&path);
+  if (!_dbus_file_exists (path_c))
+    {
+      dbus_set_error (error, DBUS_ERROR_FILE_NOT_FOUND, "Cannot open %s for reading\n", path_c);
+      goto out;
+    }
+
+  if (!_dbus_file_get_contents (str_return, &path, error))
+    goto out;
+
+  ret = TRUE;
+
+out:
+  _dbus_string_free (&path);
+  return ret;
+}
+
+static
+dbus_bool_t
+pop_status_data_until_matched_prefix(DBusString *str,
+                                     const char *prefix_cstr,
+                                     DBusString *matched_line_return)
+{
+  DBusString prefix;
+  _dbus_string_init_const (&prefix, prefix_cstr);
+
+  while (_dbus_string_pop_line (str, matched_line_return))
+    {
+      if (_dbus_string_equal_len (matched_line_return, &prefix, _dbus_string_get_length (&prefix)))
+        {
+          return TRUE;
+        }
+    }
+
+  return FALSE;
+}
+
+static
+dbus_bool_t
+pop_primary_group_from_status_data(DBusString    *str,
+                                   unsigned long *effective_group_return,
+                                   DBusError     *error)
+{
+  DBusString gid_line;
+  dbus_bool_t ret = FALSE;
+
+  if (!_dbus_string_init (&gid_line))
+    return ret;
+
+  if (!pop_status_data_until_matched_prefix (str, "Gid:", &gid_line))
+    goto out;
+
+  // TODO: Maybe it's better to get real GID instead of effective?
+  if (1 != sscanf (_dbus_string_get_const_data (&gid_line), "Gid: %*u %lu", effective_group_return))
+    {
+      dbus_set_error (error, DBUS_ERROR_FAILED, "Failed to parse effective group\n");
+      goto out;
+    }
+
+  ret = TRUE;
+
+out:
+  _dbus_string_free (&gid_line);
+  return ret;
+}
+
+static
+dbus_bool_t
+status_data_line_parse_group(const DBusString  *str,
+                             int                start,
+                             unsigned long     *group_return,
+                             int               *end_return)
+{
+    if (start > _dbus_string_get_length (str))
+      return FALSE;
+
+    _dbus_string_skip_blank (str, start, end_return);
+    return _dbus_string_parse_uint (str, *end_return, group_return, end_return);
+}
+
+static
+dbus_bool_t
+status_data_fill_groups (DBusString   *str,
+                         DBusUserInfo *info_return,
+                         DBusError    *error)
+{
+  DBusString groups;
+  dbus_gid_t gid;
+
+  dbus_bool_t allocate_next_group;
+  dbus_bool_t undo_network_bits;
+  dbus_bool_t ret = FALSE;
+
+  enum
+  {
+    YV_PLATFORM_APP = 0x0004u,
+    YV_NETWORK_BITS = 0x3000u
+  };
+
+  const char groups_line_prefix[] = "Groups:";
+  // note that the array contains NULL terminator
+  int last_group_pos_end = sizeof groups_line_prefix / sizeof groups_line_prefix[0] - 1;
+
+  info_return->n_group_ids = 0;
+  // if info_return->group_ids are allocated already they will get reallocated below
+
+  if (!_dbus_string_init (&groups))
+    return ret;
+
+  if (!pop_primary_group_from_status_data (str, &info_return->primary_gid, error))
+    goto out;
+
+  undo_network_bits =
+      YV_APP_UID_MIN <= info_return->primary_gid && info_return->primary_gid <= YV_APP_UID_MAX &&
+      0 == (info_return->primary_gid & YV_PLATFORM_APP);
+
+  if (undo_network_bits)
+    // take out L and N (network) bits (set them to 1) as they are irrelevant to D-BUS policies
+    info_return->primary_gid |= YV_NETWORK_BITS;
+
+  if (!pop_status_data_until_matched_prefix (str, groups_line_prefix, &groups))
+    goto out;
+
+  ret = TRUE;
+  // note that primary GID must be part of group_ids
+  for (gid = info_return->primary_gid, allocate_next_group = TRUE;
+       allocate_next_group;
+       allocate_next_group = status_data_line_parse_group (&groups, last_group_pos_end + 1, &gid, &last_group_pos_end))
+    {
+      void* const groups_allocated = info_return->group_ids;
+
+      ++info_return->n_group_ids;
+      info_return->group_ids = dbus_realloc (info_return->group_ids, sizeof (dbus_gid_t) * info_return->n_group_ids);
+      if (NULL == info_return->group_ids)
+        {
+          dbus_free (groups_allocated);
+          info_return->primary_gid = DBUS_GID_UNSET;
+          info_return->n_group_ids = 0;
+
+          dbus_set_error (error, DBUS_ERROR_NO_MEMORY, NULL);
+          ret = FALSE;
+
+          break;
+        }
+
+      info_return->group_ids[info_return->n_group_ids - 1] = gid;
+    }
+
+out:
+  _dbus_string_free (&groups);
+  return ret;
+}
+
+dbus_bool_t
+_dbus_user_info_fill_pid (DBusUserInfo *info,
+                          dbus_uid_t    uid,
+                          dbus_pid_t    pid,
+                          DBusError    *error)
+{
+  DBusString proc_status_data;
+  DBusString app_user_name;
+
+  dbus_bool_t proc_status_data_init = FALSE;
+  dbus_bool_t app_user_name_init = FALSE;
+
+  dbus_bool_t ret = FALSE;
+
+  _dbus_assert (uid != DBUS_UID_UNSET);
+  _dbus_assert (pid != DBUS_PID_UNSET);
+
+  info->uid = DBUS_UID_UNSET;
+  info->primary_gid = DBUS_GID_UNSET;
+  info->group_ids = NULL;
+  info->n_group_ids = 0;
+  info->username = NULL;
+  info->homedir = NULL;
+
+  if (uid < YV_APP_UID_MIN || YV_APP_UID_MAX < uid)
+    {
+      // get username and home dir
+      if (!_dbus_user_info_fill_uid (info, uid, error))
+        goto out;
+    }
+  else
+    {
+      if (!_dbus_string_init (&app_user_name))
+        goto out;
+
+      proc_status_data_init = TRUE;
+
+      if (!_dbus_string_append_uint (&app_user_name, uid))
+        {
+          dbus_set_error (error, DBUS_ERROR_FAILED, "Failed to generate app username\n");
+          goto out;
+        }
+
+      if (!_dbus_string_steal_data (&app_user_name, &info->username))
+        {
+          dbus_set_error (error, DBUS_ERROR_FAILED, "Failed to extract app username\n");
+          goto out;
+        }
+
+      info->homedir = _dbus_strdup (MACRO__prefix);
+      if (!info->homedir)
+        {
+          dbus_set_error (error, DBUS_ERROR_NO_MEMORY, NULL);
+          goto out;
+        }
+    }
+
+  if (!_dbus_string_init (&proc_status_data))
+    goto out;
+
+  proc_status_data_init = TRUE;
+
+  if (!read_proc_status_file (pid, &proc_status_data, error))
+    goto out;
+
+  if (!status_data_fill_groups (&proc_status_data, info, error))
+    goto out;
+
+  info->uid = uid;
+
+  ret = TRUE;
+
+out:
+  // no need to free anything within info as it is up to the caller
+  if (proc_status_data_init)
+    _dbus_string_free (&proc_status_data);
+  if (app_user_name_init)
+    _dbus_string_free (&app_user_name);
+
+  return ret;
 }
 
 /**
@@ -3882,6 +4205,7 @@ _dbus_append_keyring_directory_for_credentials (DBusString      *directory,
   DBusString homedir;
   DBusString dotdir;
   dbus_uid_t uid;
+  dbus_pid_t pid;
 
   _dbus_assert (credentials != NULL);
   _dbus_assert (!_dbus_credentials_are_anonymous (credentials));
@@ -3892,7 +4216,11 @@ _dbus_append_keyring_directory_for_credentials (DBusString      *directory,
   uid = _dbus_credentials_get_unix_uid (credentials);
   _dbus_assert (uid != DBUS_UID_UNSET);
 
-  if (!_dbus_homedir_from_uid (uid, &homedir))
+  pid = DBUS_PID_UNSET;
+  if (_dbus_credentials_include (credentials, DBUS_CREDENTIAL_UNIX_PROCESS_ID))
+    pid = _dbus_credentials_get_unix_pid (credentials);
+
+  if (!_dbus_homedir_from_uid (uid, pid, &homedir))
     goto failed;
 
 #ifdef DBUS_BUILD_TESTS

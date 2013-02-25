@@ -259,7 +259,8 @@ DBUS_UTIL_SOURCES=				\
 
 libdbus_1_la_SOURCES=				\
 	$(DBUS_LIB_SOURCES)			\
-	$(DBUS_SHARED_SOURCES)
+	$(DBUS_SHARED_SOURCES) \
+	$(DBUS_UTIL_arch_sources) dbus-string-util.c
 
 libdbus_internal_la_SOURCES=			\
 	$(DBUS_LIB_SOURCES)			\

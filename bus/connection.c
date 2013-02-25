@@ -371,6 +371,7 @@ dispatch_status_function (DBusConnection    *connection,
 static dbus_bool_t
 allow_unix_user_function (DBusConnection *connection,
                           unsigned long   uid,
+                          unsigned long   pid,
                           void           *data)
 {
   BusConnectionData *d;
@@ -378,8 +379,8 @@ allow_unix_user_function (DBusConnection *connection,
   d = BUS_CONNECTION_DATA (connection);
 
   _dbus_assert (d != NULL);
-  
-  return bus_context_allow_unix_user (d->connections->context, uid);
+
+  return bus_context_allow_unix_user (d->connections->context, uid, pid);
 }
 
 static void
@@ -840,13 +841,19 @@ bus_connection_get_unix_groups  (DBusConnection   *connection,
                                  DBusError        *error)
 {
   unsigned long uid;
-
+  unsigned long pid;
+  
   *groups = NULL;
   *n_groups = 0;
 
   if (dbus_connection_get_unix_user (connection, &uid))
     {
-      if (!_dbus_unix_groups_from_uid (uid, groups, n_groups))
+      if (!dbus_connection_get_unix_process_id (connection, &pid))
+        {
+          pid = DBUS_PID_UNSET;
+        }
+
+      if (!_dbus_unix_groups_from_uid (uid, pid, groups, n_groups))
         {
           _dbus_verbose ("Did not get any groups for UID %lu\n",
                          uid);

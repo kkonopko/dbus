@@ -142,6 +142,7 @@ typedef void        (* DBusWakeupMainFunction)     (void           *data);
  */ 
 typedef dbus_bool_t (* DBusAllowUnixUserFunction)  (DBusConnection *connection,
                                                     unsigned long   uid,
+                                                    unsigned long   pid,
                                                     void           *data);
 
 /**

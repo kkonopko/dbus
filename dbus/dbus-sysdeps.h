@@ -191,7 +191,8 @@ dbus_bool_t _dbus_send_credentials_socket (int              server_fd,
                                            DBusError       *error);
 
 dbus_bool_t _dbus_credentials_add_from_user            (DBusCredentials  *credentials,
-                                                        const DBusString *username);
+                                                        const DBusString *username,
+                                                        dbus_pid_t        pid);
 dbus_bool_t _dbus_credentials_add_from_current_process (DBusCredentials  *credentials);
 dbus_bool_t _dbus_append_user_from_current_process     (DBusString        *str);
 
@@ -200,9 +201,11 @@ dbus_bool_t _dbus_parse_unix_user_from_config   (const DBusString  *username,
 dbus_bool_t _dbus_parse_unix_group_from_config  (const DBusString  *groupname,
                                                  dbus_gid_t        *gid_p);
 dbus_bool_t _dbus_unix_groups_from_uid          (dbus_uid_t         uid,
+                                                 dbus_pid_t         pid,
                                                  dbus_gid_t       **group_ids,
                                                  int               *n_group_ids);
 dbus_bool_t _dbus_unix_user_is_at_console       (dbus_uid_t         uid,
+                                                 dbus_pid_t         pid,
                                                  DBusError         *error);
 dbus_bool_t _dbus_unix_user_is_process_owner    (dbus_uid_t         uid);
 dbus_bool_t _dbus_windows_user_is_process_owner (const char        *windows_sid);

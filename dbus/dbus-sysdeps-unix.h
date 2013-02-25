@@ -120,6 +120,10 @@ dbus_bool_t _dbus_user_info_fill     (DBusUserInfo     *info,
 dbus_bool_t _dbus_user_info_fill_uid (DBusUserInfo     *info,
                                       dbus_uid_t        uid,
                                       DBusError        *error);
+dbus_bool_t _dbus_user_info_fill_pid (DBusUserInfo *info,
+                                      dbus_uid_t    uid,
+                                      dbus_pid_t    pid,
+                                      DBusError    *error);
 void        _dbus_user_info_free     (DBusUserInfo     *info);
 
 dbus_bool_t _dbus_group_info_fill     (DBusGroupInfo    *info,
@@ -128,6 +132,7 @@ dbus_bool_t _dbus_group_info_fill     (DBusGroupInfo    *info,
 dbus_bool_t _dbus_group_info_fill_gid (DBusGroupInfo    *info,
                                        dbus_gid_t        gid,
                                        DBusError        *error);
+
 void        _dbus_group_info_free     (DBusGroupInfo    *info);
 
 dbus_uid_t    _dbus_getuid (void);
